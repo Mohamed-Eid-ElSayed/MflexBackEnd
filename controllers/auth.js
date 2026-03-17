@@ -9,10 +9,12 @@ import jwt from "jsonwebtoken";
 const SALT_ROUNDS = 10;
 /** Argon2 hashes start with $argon2; bcrypt with $2a/$2b - use to detect legacy users */
 const isArgon2Hash = (hash) => typeof hash === "string" && hash.startsWith("$argon2");
+const isProd = process.env.NODE_ENV === "production";
 const cookieOptions = {
-    secure: process.env.NODE_ENV === "production",
+    secure: isProd,
     httpOnly: true,
-    sameSite: "strict",
+    // Cross-site cookies (Vercel frontend -> Vercel backend) require SameSite=None;Secure
+    sameSite: isProd ? "none" : "lax",
 };
 
 const signUp = async (req, res, next) => {
@@ -77,13 +79,13 @@ const logIn = async (req, res, next) => {
         if (!secret) {
             return next(errorHandler(500, "Server misconfiguration: JWT secret not set"));
         }
-        const token = jwt.sign({ id: user._id }, secret);
+        const token = jwt.sign({ id: user._id }, secret, { expiresIn: "7d" });
         const { password: _, ...userData } = user._doc;
 
         res
             .cookie("access_token", token, cookieOptions)
             .status(200)
-            .json(userData);
+            .json({ user: userData, token });
     } catch (err) {
         next(err);
     }
